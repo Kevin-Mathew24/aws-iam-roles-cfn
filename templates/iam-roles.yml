@@ -1,0 +1,176 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for creating IAM roles and policies for Lambda and S3 following AWS best practices'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - stage
+      - prod
+    Description: Environment name for resource tagging
+
+Resources:
+  # Lambda execution role with least privilege access
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'lambda-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref LambdaBasicExecutionPolicy
+        - !Ref LambdaS3AccessPolicy
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Lambda
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # Lambda basic execution policy (for CloudWatch Logs access)
+  LambdaBasicExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub 'lambda-basic-execution-policy-${Environment}'
+      Description: Allows Lambda functions to write logs to CloudWatch
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              - !Sub 'arn:aws:logs:*:${AWS::AccountId}:log-group:/aws/lambda/*:*'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Lambda
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # Lambda S3 access policy (read/write with least privilege)
+  LambdaS3AccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub 'lambda-s3-access-policy-${Environment}'
+      Description: Provides Lambda functions with read/write access to specific S3 buckets
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3ReadAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::${Environment}-*-bucket'
+              - !Sub 'arn:aws:s3:::${Environment}-*-bucket/*'
+          - Sid: S3WriteAccess
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource:
+              - !Sub 'arn:aws:s3:::${Environment}-*-bucket/*'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Lambda
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # S3 bucket role with least privilege access
+  S3BucketRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 's3-bucket-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref S3BucketAccessPolicy
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: S3
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # S3 bucket access policy (for S3 bucket operations)
+  S3BucketAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub 's3-bucket-access-policy-${Environment}'
+      Description: Provides necessary permissions for S3 bucket operations
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3BucketOperations
+            Effect: Allow
+            Action:
+              - s3:PutLifecycleConfiguration
+              - s3:GetLifecycleConfiguration
+              - s3:PutBucketNotification
+              - s3:GetBucketNotification
+              - s3:PutInventoryConfiguration
+              - s3:GetInventoryConfiguration
+              - s3:PutEncryptionConfiguration
+              - s3:GetEncryptionConfiguration
+            Resource:
+              - !Sub 'arn:aws:s3:::${Environment}-*-bucket'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: S3
+        - Key: ManagedBy
+          Value: CloudFormation
+
+Outputs:
+  LambdaExecutionRoleArn:
+    Description: ARN of the Lambda execution role
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaExecutionRoleArn'
+
+  LambdaBasicExecutionPolicyArn:
+    Description: ARN of the Lambda basic execution policy
+    Value: !Ref LambdaBasicExecutionPolicy
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaBasicExecutionPolicyArn'
+
+  LambdaS3AccessPolicyArn:
+    Description: ARN of the Lambda S3 access policy
+    Value: !Ref LambdaS3AccessPolicy
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaS3AccessPolicyArn'
+
+  S3BucketRoleArn:
+    Description: ARN of the S3 bucket role
+    Value: !GetAtt S3BucketRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-S3BucketRoleArn'
+
+  S3BucketAccessPolicyArn:
+    Description: ARN of the S3 bucket access policy
+    Value: !Ref S3BucketAccessPolicy
+    Export:
+      Name: !Sub '${AWS::StackName}-S3BucketAccessPolicyArn'
